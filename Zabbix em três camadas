@@ -1,0 +1,229 @@
+Objetivo
+O objetivo deste procedimento, é a documentação do processo de instalação de Zabbix, em 3 camadas (Servidor, Banco de Dados e Proxy).
+
+Criação das VMS
+Nesta primeira etapa, será necessário realizar o processo de criação das máquinas que serão utilizados. Para o exemplo em questão, foram utilizadas 4 máquinas. Segue as informações das máquinas: 
+VM1- 
+	Hostname: Zabbix-Server
+ 	S.O: Ubuntu 20.04
+ 	Hardware: 8Gb, vCPUs: 2, SSD: 250GB
+ 	Função: Zabbix Server e Front End
+
+VM1- 
+	Hostname: Zabbix-DB
+ 	S.O: Ubuntu 20.04
+ 	Hardware: 8Gb, vCPUs: 2, SSD: 250GB
+ 	Função: Zabbix Banco de Dados
+VM3- 
+	Hostname: Zabbix-Proxy
+ 	S.O: Ubuntu 20.04
+ 	Hardware: 8Gb, vCPUs: 2, SSD: 250GB
+ 	Função: Zabbix Proxy
+VM4- 
+	Hostname: Zabbix-Agent
+ 	S.O: Windows Server 2019
+ 	Hardware: 8Gb, vCPUs: 2, SSD: 250GB
+ 	Função: Homologação de instalação do agente por meio de GPO
+
+
+Procedimento de instalação – Zabbix Server e Front End
+Após a criação dos servidores listados acima, foi realizado o processo de instalação e configuração do Zabbix Server e Front End.
+1. Instale o repositório Zabbix 
+# wget https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.0-3+ubuntu20.04_all.deb
+# dpkg -i zabbix-release_6.0-3+ubuntu20.04_all.deb
+# apt update
+ 
+2. Instale o servidor e Front.
+# apt install zabbix-server-mysql zabbix-sql-scripts zabbix-agent
+ 
+3 - Ajustar informações do acesso ao banco no Conf.
+#vim /etc/zabbix/zabbix_server.conf
+ 
+No parâmetro DBHost, insira o ip da máquina em que será criado o banco de dados. Portanto, temos:
+DBHost=10.0.0.x (IP DO BANCO)
+DBPassword=zabbix (Senha exemplo)
+ 
+4 - Copie o arquivo .sql, localizado no diretório /usr/share/doc/zabbix-server-mysql/server.sql.gz, para a máquina na qual está o banco de dados.
+
+#  scp /usr/share/doc/zabbix-sql-scripts/mysql/server.sql.gz USUARIO@IP_DESTINO:/home/user
+
+_______________________________________________________________
+ 
+Obs: Realizar esse procedimento, após a criação e configuração do servidor DB.
+ 
+1 - Instalação do Php
+# apt install zabbix-frontend-php zabbix-apache-conf
+ 
+2 - Configurar PHP 
+# sudo  vim /etc/zabbix/apache.conf
+
+Ajustar os parametros para: 
+post_max_size para = 16M
+Max_execution_time = 300
+Max_inpute_time 300
+date.timezone America/Sao_Paulo        
+ 
+# systemctl restart zabbix-server zabbix-agent apache2
+# systemctl enable zabbix-server zabbix-agent apache2
+ 
+ 3 - Acessar o site
+http://server_ip_or_dns_name/zabbix
+ 
+4 - Configuração do Zabbix por meio da página web. 
+"Zabbix server detail"
+•	Database host: IP do DB.
+Database port: 0
+Database name: zabbix
+User: zabbix
+Password: 12qwaszx@@ (ou outra senha que for colocada)
+
+"Pre-installation summary install"
+Host: IP do SERVER
+Port: 10051
+name: zabbixserver
+ 
+Login: Admin
+Senha: zabbix
+ 
+_______________________________________________________________
+
+5 - Instalar o Agent do Zabbix, para monitorar o próprio Server:
+# apt install zabbix-agent
+ 
+6 - Ajustar o hostname do Agent no proxy
+#  vim /etc/zabbix/zabbix_agentd.conf
+ Hostname= NOME_DO_HOST
+ 
+7 - Reiniciar/habilitar o serviço do proxy.
+# systemctl enable zabbix-agent
+# systemctl restart zabbix-agent
+
+Procedimento de instalação – Zabbix DB
+Após a dos processos listados acima, foi realizado o processo de instalação e configuração do Zabbix DB.
+1. Atualizar repositório
+# apt update
+ 
+ 2 - Instalar banco
+# apt install mysql-server
+ 
+3 - Criar banco de dados inicial
+# mysql -uroot
+mysql> create database zabbix character set utf8mb4 collate utf8mb4_bin;
+mysql>  create user zabbix@'%'  identified by '12qwaszx@@';
+mysql> GRANT ALL PRIVILEGES ON zabbix.* TO zabbix@'%' WITH GRANT OPTION;
+mysql> quit;
+ 
+4 - Importar arquivo do banco que foi criado no servidor do Zabbix. Processo cria as tabelas no DB.
+# zcat /home/user/server.sql.gz | mysql -uzabbix -p zabbix
+-Senha posta anteriormente 12qwaszx@@
+ 
+Validar se as tabelas foram importadas. 
+# mysql -uroot
+mysql>  use zabbix;
+mysql>  show tables;
+ 
+5 - Ajustar a porta que está escutando. 
+# vim /etc/mysql/mysql.conf.d/mysql.cnf
+# bind-address 0.0.0.0. (colocar o ip do próprio servidor do banco)
+ 
+Reiniciar o mysql. 
+# service mysql restart 
+ 
+Teste de conexão ao banco a partir do SERVER
+# mysql -h  10.0.0.7 -u zabbix -p12qwaszx@@
+ 
+6 - Instalar o Agent do Zabbix, para monitorar o próprio BANCO:
+# apt install zabbix-agent
+ 
+7 - Ajustar o hostname do Agent no proxy
+#  vim /etc/zabbix/zabbix_agentd.conf
+ Hostname= NOME_DO_HOST
+ 
+8 - Reiniciar/habilitar o serviço do proxy.
+# systemctl enable zabbix-agent
+# systemctl restart zabbix-agent
+
+
+Procedimento de instalação – Zabbix Proxy
+Após a dos processos listados acima, foi realizado o processo de instalação e configuração do Zabbix Proxy.
+1. Instale o repositório Zabbix
+# wget https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbixrelease_6.0-3+ubuntu20.04_all.deb
+# dpkg -i zabbix-release_6.0-3+ubuntu20.04_all.deb
+# apt update
+# apt install zabbix-proxy-sqlite3 zabbix-get zabbix-sender
+2 - Criar e ajustar permissões de pastas
+# mkdir -p /var/lib/zabbix
+# cd /var/lib/
+# chown zabbix. -R zabbix/
+
+3 - Configuração do arquivo de conf do Proxy: 
+# vi /etc/zabbix/zabbix_proxy.conf 
+Server= 10.0.0.x (IP do Zabbix SERVER)
+DBName= /var/lib/zabbix/zabbix.db 
+DBUser=zabbix 
+Hostname=Zabbix_proxy (nome do host que será usado no Zabbix) ConfigFrequency=300
+4 - Instalar o Agent do Zabbix no prozy, para monitorar o próprio proxy:
+# apt install zabbix-agent
+5 - Ajustar o hostname do Agent no proxy
+# vim /etc/zabbix/zabbix_agentd.conf
+Hostname= NOME_DO_HOST
+6 - Reiniciar/habilitar o serviços/ajuste de permissões.
+# systemctl enable zabbix-proxy
+# systemctl enable zabbix-agent
+# systemctl restart zabbix-proxy
+# systemctl restart zabbix-agent
+# chown zabbix:zabbix /var/lib/zabbix/zabbix.db
+
+Procedimento de configuração da GPO de instalação
+Após a dos processos listados acima, será realizado o processo de deploy de instalação dos agentes do Zabbix, para máquinas Windows.
+
+1- Realizar o download do instalador .MSI do agente do zabbix, por meio do site do próprio software. 
+Link: www.zabbix.com/br/download_agents
+
+2 – Criar uma pasta compartilhada na rede e colocar o arquivo na pasta. 
+Realizar ajustes de permissão de acesso e execução do compartilhamento
+
+3 – Criar um arquivo .ps1 que fará a instalação do agente do Zabbix, alterando os parâmetros desejados. 
+msiexec.exe /i \\10.0.0.9\Software\zabbix_agent-6.0.6-windows-amd64-openssl.msi server=10.0.0.15 ServerActive=10.0.0.15 /passive 
+Obs: Os ítens destacados em negrito são ajustados conforme cada ambiente.
+4 – Criar um arquivo .bat no qual irá chamar o arquivo .ps1 e executá-lo durante a iniciação. 
+ 	@echo off
+ 	powershell -File C:\Software\InstaladorAgent.ps1
+ 	pause
+5 – Criação de GPO.
+Acessar o serviço de Group Policy Management e selecionar a OU a ser instalada. 
+	Computer Configuration > Plocies > Windows Settings > Startup > Script > Add
+ 
+
+Procedimento de configuração de autodiscovery
+Após a dos processos listados acima, será realizado o processo de configuração de autodiscovery e adicionamento de host automaticamente no Zabbix.
+1 - Criar regra de descoberta:
+ Configuration > Discovery > Create discovery rule
+ 
+ 
+ 
+ 
+ 
+ 
+
+2 - Criar regras de ações:
+Esta configuração é possível realizar para descoberta de diversas formas. Seja por agent, SNMP, ICMP, ou outros. No exemplo foi utilizado a descoberta por Agent e que estejam apontando pro Proxy. 
+
+ -- Configuration > Actions >  Discovery rules.
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+Topologia do ambiente
+Segue a topologia do ambiente com os servidores criados.
+ 
